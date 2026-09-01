@@ -1,0 +1,221 @@
+name: Test
+
+# All three systems for the code, and on Linux a repository that git itself
+# built and packed. The repositories the unit tests write are loose objects,
+# because that is what can be written by hand; a packfile with delta chains
+# in it is a different thing to read, and the only honest check of the pack
+# reader is one somebody's git actually wrote.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: Formatting
+        shell: bash
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Tests
+        run: go test -v ./...
+
+      - name: The other systems still compile
+        shell: bash
+        run: |
+          for target in windows linux darwin; do
+            GOOS=$target go vet ./...
+            GOOS=$target go build -o /dev/null .
+          done
+
+  # A repository git wrote, packed, and left the leftovers of.
+  real:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+
+      - name: Build a repository that leaks
+        run: |
+          git config --global init.defaultBranch main
+          mkdir -p work && cd work
+          git init --quiet
+
+          # Made up, glued together here rather than written out, because a
+          # literal that looks like a live credential in a repository is
+          # one as far as push protection is concerned, and because this
+          # repository gets read by its own tool.
+          KEY="sk_""live_""51H8vQ2LmNoPqRsTuVwXyZa"
+          PW="Tr0ub""4dor3"
+          STASHED="hunter2""andmore"
+
+          git config user.name "Ana Ruiz"
+          git config user.email "ana@acme.corp"
+          git remote add origin git@git.acme.corp:platform/orders.git
+
+          printf 'STRIPE_KEY=%s\nDB=postgres://app:%s@db.internal.acme.corp/orders\n' "$KEY" "$PW" > .env
+          echo '# orders' > README.md
+          git add .env README.md
+          GIT_AUTHOR_DATE="2026-03-04T22:40:00+0100" GIT_COMMITTER_DATE="2026-03-04T22:40:00+0100" \
+            git commit --quiet -m "ACME-4417 first cut"
+
+          # Taken out of the tree, still on the branch. This is the whole
+          # point of the tool and it has to survive a real repack.
+          git rm --quiet .env
+          echo ".env" > .gitignore
+          mkdir -p deploy src
+          ssh-keygen -q -t ed25519 -N "" -C ci@example -f deploy/id_rsa
+          printf 'import requests\nBASE = "https://api.bigbank.internal/v2"\n' > src/bank.py
+          git add -A
+          GIT_AUTHOR_DATE="2026-03-05T23:10:00+0100" GIT_COMMITTER_DATE="2026-03-05T23:10:00+0100" \
+            git commit --quiet -m "ACME-4420 take the env file out"
+
+          # A second author, a branch with a customer in the name, a tag,
+          # an amend that strands an object, and a stash nobody came back
+          # to. All of it ordinary, all of it published or handed over.
+          git config user.name "Luis Marin"
+          git config user.email "luismarin84@gmail.com"
+          git checkout --quiet -b feature/bigbank-migration
+          echo "notes" > notes.md
+          git add notes.md
+          git commit --quiet -m "start the migration"
+          git commit --quiet --amend -m "ACME-4420 start the migration"
+          git checkout --quiet main
+          git tag -a v1 -m "version one"
+
+          echo "PASSWORD=$STASHED" > scratch.txt
+          git add scratch.txt
+          git stash --quiet
+
+          # Pack it, so what the tool reads is a real packfile with real
+          # deltas in it rather than the loose objects git starts with.
+          # -A rather than -a: plain "repack -a -d" deletes the objects
+          # nothing points at, which are exactly the ones the second half
+          # of this test is about. -A is what git gc does with them.
+          git repack -A -d --quiet
+          ls .git/objects/pack/
+          git count-objects -v
+
+      - name: What goes out when this is published
+        run: |
+          go build -o airing-check .
+          set +e
+          ./airing-check work > out.txt 2>&1
+          code=$?
+          set -e
+          cat out.txt
+
+          if [ "$code" -ne 1 ]; then
+            echo "Expected exit 1 on a repository with a live key on the branch, got $code"
+            exit 1
+          fi
+
+          # Flattened, because the report wraps to the width of a terminal
+          # and any phrase worth grepping for is split across two lines by
+          # the time it gets here.
+          tr -s '[:space:]' ' ' < out.txt > flat.txt
+
+          grep -q "taken out later, and still on the branch" flat.txt || {
+            echo "the deleted .env was not reported as still going out"; exit 1; }
+          grep -q "must not be published" flat.txt || {
+            echo "the private key in the tree was missed"; exit 1; }
+          grep -q "deploy/id_rsa" flat.txt || {
+            echo "the key was not named"; exit 1; }
+
+      - name: And the half that only goes if you hand over the folder
+        run: |
+          # Not the flattened copy here. Every one of these is a finding
+          # title, and a title is one line with its tag on the front, so
+          # the tag can be part of the pattern. On the flattened copy every
+          # tag in the report is on the same line as every title and a
+          # check like this always passes, which is worse than not having
+          # it: the two piles are the whole idea, and a finding in the
+          # wrong one tells somebody their reflog is about to be published
+          # when it is not.
+          grep -q "\[HANDED \].*on no branch" out.txt || {
+            echo "the objects the amend stranded were not found, or not in that pile"; exit 1; }
+          grep -q "\[HANDED \] the reflog remembers" out.txt || {
+            echo "the reflog was not reported as something a push leaves behind"; exit 1; }
+          grep -q "\[HANDED \].*in the stash" out.txt || {
+            echo "the stash was not reported as something a push leaves behind"; exit 1; }
+          grep -q "\[PUBLIC \].*goes out anyway" out.txt || {
+            echo "the deleted file was not in the pile a push sends"; exit 1; }
+          grep -q "\[PUBLIC \].*must not be published" out.txt || {
+            echo "the private key was not in the pile a push sends"; exit 1; }
+
+      - name: What the history says about the people in it
+        run: |
+          ./airing-check --reveal work > revealed.txt 2>&1 || true
+          tr -s '[:space:]' ' ' < revealed.txt > revflat.txt
+          for wanted in "ACME-4417" "api.bigbank.internal" "acme.corp" "Ana Ruiz"; do
+            grep -q "$wanted" revflat.txt || { echo "missed: $wanted"; exit 1; }
+          done
+
+      - name: And it printed none of the secrets
+        run: |
+          KEY="sk_""live_""51H8vQ2LmNoPqRsTuVwXyZa"
+          PW="Tr0ub""4dor3"
+          STASHED="hunter2""andmore"
+          for file in out.txt revealed.txt; do
+            for secret in "$KEY" "$PW" "$STASHED" "BEGIN OPENSSH PRIVATE KEY"; do
+              if grep -qF -- "$secret" "$file"; then
+                echo "A secret reached $file: $secret"
+                exit 1
+              fi
+            done
+          done
+          echo "It found them and printed none of them."
+
+      # Every object in a repository somebody else packed has to rebuild
+      # and hash back to its own name, or the pack reader is wrong
+      # somewhere and nothing else here means anything.
+      - name: Every object in this repository rebuilds
+        env:
+          AIRING_REPO: ${{ github.workspace }}
+        run: go test -count=1 -run TestEveryObjectHashesBack -v .
+
+      # A repository with nothing wrong in it has to come back quiet, or
+      # the tool is useless on the ones that are fine.
+      - name: A clean repository is reported as clean
+        run: |
+          mkdir -p tidy && cd tidy
+          git init --quiet
+          git config user.name "Somebody"
+          git config user.email "somebody@example.com"
+          printf 'package main\n\nfunc main() {}\n' > main.go
+          echo "# a project" > README.md
+          git add -A
+          git commit --quiet -m "first"
+          cd ..
+
+          set +e
+          ./airing-check tidy > tidy.txt 2>&1
+          code=$?
+          set -e
+          cat tidy.txt
+          if [ "$code" -eq 1 ]; then
+            echo "A repository with nothing wrong in it was reported as leaking."
+            exit 1
+          fi
+          tr -s '[:space:]' ' ' < tidy.txt > tidyflat.txt
+          grep -q "not the same as nothing being there" tidyflat.txt || {
+            echo "it claimed more than it knows"; exit 1; }

@@ -1,0 +1,8 @@
+airing
+airing.exe
+airing-check
+airing-check.exe
+dist/
+
+*.test
+*.out
