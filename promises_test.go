@@ -158,6 +158,26 @@ func TestDoingItProperlyIsNotAFinding(t *testing.T) {
 	}
 }
 
+// What a login form tells the browser to fill in is not a password. These
+// are the shapes it takes in a page, the first of them word for word from
+// the form that turned up eleven times in a real repository's history.
+func TestFormWordsAreNotSecrets(t *testing.T) {
+	for _, line := range []string{
+		`  entrada.autocomplete = modoRegistro ? "new-password" : "current-password";`,
+		`passwordAutocomplete: "current-password",`,
+		`const passwordHint = 'new-password'`,
+		`<input name="code" autocomplete="one-time-code">`,
+	} {
+		if hits := detect(line); len(hits) > 0 {
+			t.Errorf("%q was reported as a secret", line)
+		}
+	}
+	// And a password that happens to start the same way still is one.
+	if hits := detect(`password = "current-password-2026!"`); len(hits) == 0 {
+		t.Error("a real password beginning with the word was let through")
+	}
+}
+
 // The report has to say what it could not read. A tool that quietly skips
 // the part it could not open and prints a clean bill is worse than no
 // tool.

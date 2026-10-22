@@ -97,8 +97,16 @@ var detectors = []Detector{
 // The values that are not secrets however much they look like one. Every
 // repository has example configuration and test fixtures in it, and a
 // history is every version of all of them.
+//
+// current-password and new-password are what a login form tells the
+// browser to fill in, and one-time-code the box for a code. A page that
+// writes autocomplete = registering ? "new-password" : "current-password"
+// reads, to the rule above, as a key called new-password set to a value,
+// and the first public repository this was pointed at had it in every one
+// of its eleven versions of the form.
 var placeholder = regexp.MustCompile(`(?i)^["']?(` +
 	`change[_-]?me|changeit|password|passwd|secret|token|(?:your|my|the|some)[\w.-]*|` +
+	`(?:current|new)[_-]password|one[_-]time[_-]code|` +
 	`example|examples|sample|test|testing|dummy|placeholder|redacted|` +
 	`xxx+|yyy+|zzz+|aaa+|1234\d*|abc123|foo|bar|baz|qwerty|admin|root|` +
 	`none|null|nil|true|false|undefined|empty|unset|todo|tbd|` +

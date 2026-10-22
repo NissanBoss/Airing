@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.1
+
+- **What a login form tells the browser is not a password.** A page that
+  wrote `autocomplete = registering ? "new-password" : "current-password"`
+  was reported as a password set in a file, once for every version of the
+  form in the history: eleven times in the first public repository it was
+  pointed at, none of them a secret. `current-password`, `new-password` and
+  `one-time-code`, the values the HTML standard gives a form, are now among
+  the words that stand in for a secret rather than being one.
+
 ## v1
 
 The first one.
