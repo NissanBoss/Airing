@@ -21,6 +21,10 @@ package main
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -37,4 +41,42 @@ func show(value string, reveal bool) string {
 		return value
 	}
 	return hidden(value)
+}
+
+// plain is an error without the path Go writes into it. A gap already says
+// which file it is, in the repository's own terms; the rest of the path is
+// this machine's, with the user name in it.
+func plain(err error) string {
+	var pe *fs.PathError
+	if errors.As(err, &pe) {
+		return pe.Err.Error()
+	}
+	return err.Error()
+}
+
+// where is the folder being read, the way the heading shows it: the home
+// folder as ~. The paths inside the repository are the thing about to be
+// published and print in full, but the one it sits in on this machine is
+// not, and in v1 the heading printed it whole, user name and all, the first
+// time anybody passed a full path instead of a dot.
+func where(dir string, reveal bool) string {
+	if reveal {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return dir
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return dir
+	}
+	rel, err := filepath.Rel(home, abs)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || filepath.IsAbs(rel) {
+		return dir
+	}
+	if rel == "." {
+		return "~"
+	}
+	return "~/" + filepath.ToSlash(rel)
 }

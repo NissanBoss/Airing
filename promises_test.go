@@ -178,6 +178,29 @@ func TestFormWordsAreNotSecrets(t *testing.T) {
 	}
 }
 
+// The folder the repository sits in is this machine's, and the user name is
+// in it. v1 printed it whole in the heading.
+func TestTheHomeFolderIsNotShown(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home folder here")
+	}
+	dir := filepath.Join(home, "projects", "site")
+	if got := where(dir, false); got != "~/projects/site" {
+		t.Errorf("shown as %s", got)
+	}
+	if got := where(dir, true); got != dir {
+		t.Errorf("--reveal showed %s", got)
+	}
+	if got := where(".", false); got != "." && !strings.HasPrefix(got, "~") {
+		t.Errorf("the current folder came out as %s", got)
+	}
+	_, err = os.ReadFile(filepath.Join(home, "no-such-file-for-airing"))
+	if got := plain(err); strings.Contains(got, home) {
+		t.Errorf("an error still carries the home folder: %s", got)
+	}
+}
+
 // The report has to say what it could not read. A tool that quietly skips
 // the part it could not open and prints a clean bill is worse than no
 // tool.

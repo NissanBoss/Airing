@@ -49,24 +49,24 @@ func main() {
 		return
 	}
 
-	where := "."
+	dir := "."
 	if flag.NArg() == 1 {
-		where = flag.Arg(0)
+		dir = flag.Arg(0)
 	} else if flag.NArg() > 1 {
 		usage()
 		os.Exit(exitBroken)
 	}
 
-	repo, err := OpenRepo(where)
+	repo, err := OpenRepo(dir)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "airing: %v\n", err)
+		fmt.Fprintf(os.Stderr, "airing: %s: %s\n", where(dir, *reveal), plain(err))
 		os.Exit(exitBroken)
 	}
 	defer repo.Close()
 
 	found := inspect(repo)
 	report := found.writeUp(*reveal)
-	report.render(os.Stdout, where+"  ("+found.summary()+")")
+	report.render(os.Stdout, where(dir, *reveal)+"  ("+found.summary()+")")
 
 	switch {
 	case report.worst() == Public:

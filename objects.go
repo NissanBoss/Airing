@@ -148,7 +148,7 @@ func (s *Store) findLoose() error {
 		}
 		inner, err := os.ReadDir(filepath.Join(root, name))
 		if err != nil {
-			s.Gaps = append(s.Gaps, "objects/"+name+": "+err.Error())
+			s.Gaps = append(s.Gaps, "objects/"+name+": "+plain(err))
 			continue
 		}
 		for _, f := range inner {
@@ -175,7 +175,7 @@ func (s *Store) findPacks() error {
 		}
 		p, err := openPack(filepath.Join(dir, e.Name()))
 		if err != nil {
-			s.Gaps = append(s.Gaps, e.Name()+": "+err.Error())
+			s.Gaps = append(s.Gaps, e.Name()+": "+plain(err))
 			continue
 		}
 		s.packs = append(s.packs, p)

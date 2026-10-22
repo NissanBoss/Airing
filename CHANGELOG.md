@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.2
+
+- **The heading no longer prints the home folder.** Given a full path rather
+  than a dot, v1 and v1.1 printed it whole at the top of the report, user
+  name and all, which is the one thing a report about what you are about to
+  publish should not carry. It comes out as `~` now, like the rest of the
+  series, and `--reveal` shows it.
+- **Neither do the gaps.** A file that could not be read was reported with
+  Go's own error, which spells out the full path; it is said in the
+  repository's own terms now.
+
 ## v1.1
 
 - **What a login form tells the browser is not a password.** A page that

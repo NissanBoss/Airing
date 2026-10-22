@@ -142,7 +142,7 @@ func findGit(where string) (work, git string, err error) {
 func (r *Repo) readHead() {
 	body, err := os.ReadFile(filepath.Join(r.Git, "HEAD"))
 	if err != nil {
-		r.Gaps = append(r.Gaps, "HEAD: "+err.Error())
+		r.Gaps = append(r.Gaps, "HEAD: "+plain(err))
 		return
 	}
 	line := strings.TrimSpace(string(body))
@@ -161,7 +161,11 @@ func (r *Repo) readRefs() {
 		}
 		body, err := os.ReadFile(path)
 		if err != nil {
-			r.Gaps = append(r.Gaps, path+": "+err.Error())
+			name := path
+			if rel, err := filepath.Rel(r.Git, path); err == nil {
+				name = filepath.ToSlash(rel)
+			}
+			r.Gaps = append(r.Gaps, name+": "+plain(err))
 			return nil
 		}
 		h, ok := hashFrom(string(body))
